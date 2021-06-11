@@ -2,8 +2,13 @@ package com.example.location;
 
 import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
+import androidx.localbroadcastmanager.content.LocalBroadcastManager;
 
 import android.Manifest;
+import android.content.BroadcastReceiver;
+import android.content.Context;
+import android.content.Intent;
+import android.content.IntentFilter;
 import android.location.Address;
 import android.location.Geocoder;
 import android.location.Location;
@@ -18,14 +23,14 @@ import java.io.IOException;
 import java.util.List;
 import java.util.Locale;
 
-public class MainActivity extends AppCompatActivity implements LocationManager.LocationTracker {
+public class MainActivity extends AppCompatActivity {
 
     Button btnGetLastLocation, btnGetAddress;
     TextView txtResult;
     private String[] permissions = {Manifest.permission.ACCESS_FINE_LOCATION};
     private PermissionManager permissionManager;
     private LocationManager locationManager;
-    private Location location;
+    private IntentFilter localBroadcastIntentFilter;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -38,6 +43,9 @@ public class MainActivity extends AppCompatActivity implements LocationManager.L
 
         permissionManager = PermissionManager.getInstance(this);
         locationManager = LocationManager.getInstance(this);
+
+        localBroadcastIntentFilter = new IntentFilter();
+        localBroadcastIntentFilter.addAction("local_broadcast");
 
         btnGetLastLocation.setOnClickListener(new View.OnClickListener() {
             @Override public void onClick(View v) {
@@ -63,6 +71,7 @@ public class MainActivity extends AppCompatActivity implements LocationManager.L
         btnGetAddress.setOnClickListener(new View.OnClickListener() {
             @Override public void onClick(View v) {
                 Geocoder geocoder = new Geocoder(MainActivity.this, Locale.getDefault());
+                Location location = locationManager.getLastLocation();
                 if (location != null) {
                     try {
                         List<Address> addresses = geocoder.getFromLocation(location.getLatitude()
@@ -90,21 +99,14 @@ public class MainActivity extends AppCompatActivity implements LocationManager.L
     @Override protected void onResume() {
         super.onResume();
         locationManager.startLocationUpdates();
+        LocalBroadcastManager.getInstance(MainActivity.this).registerReceiver(localBroadCastReceiver,
+                localBroadcastIntentFilter);
     }
 
     @Override protected void onPause() {
+        LocalBroadcastManager.getInstance(MainActivity.this).unregisterReceiver(localBroadCastReceiver);
         locationManager.stopLocationUpdates();
         super.onPause();
-    }
-
-    @Override public void updateLocation(Location location) {
-        this.location = location;
-        if (location != null) {
-            Toast.makeText(MainActivity.this,
-                    "Updated Location: \n" + "Lat: " + location.getLatitude() + "\n" + "Long: " + location.getLongitude(), Toast.LENGTH_SHORT).show();
-        } else {
-            Toast.makeText(this, "Could not fetch location.", Toast.LENGTH_SHORT).show();
-        }
     }
 
     @Override public void onRequestPermissionsResult(int requestCode,
@@ -116,4 +118,13 @@ public class MainActivity extends AppCompatActivity implements LocationManager.L
             locationManager.createLocationRequest();
         }
     }
+
+    BroadcastReceiver localBroadCastReceiver = new BroadcastReceiver() {
+        @Override public void onReceive(Context context, Intent intent) {
+            Log.d("TAG", "Broadcasted");
+            Toast.makeText(MainActivity.this,
+                    intent.getStringExtra("location"), Toast.LENGTH_SHORT).show();
+        }
+    };
+
 }

@@ -3,6 +3,7 @@ package com.example.location;
 import android.Manifest;
 import android.app.Activity;
 import android.content.Context;
+import android.content.Intent;
 import android.content.IntentSender;
 import android.content.pm.PackageManager;
 import android.location.Location;
@@ -13,6 +14,7 @@ import android.text.TextUtils;
 
 import androidx.annotation.NonNull;
 import androidx.core.app.ActivityCompat;
+import androidx.localbroadcastmanager.content.LocalBroadcastManager;
 
 import com.google.android.gms.common.api.ResolvableApiException;
 import com.google.android.gms.location.FusedLocationProviderClient;
@@ -31,13 +33,14 @@ public class LocationManager {
 
     private static LocationManager instance = null;
     private Context context;
-    private Activity activity;
     private FusedLocationProviderClient fusedLocationProviderClient;
     private Location lastLocation;
     private static int REQUEST_CHECK_SETTINGS = 200;
     private LocationRequest locationRequest;
     private LocationCallback locationCallback;
-    private LocationTracker locationTracker;
+    Intent intent = new Intent("local_broadcast");
+    StringBuilder stringBuilder = new StringBuilder();
+    private Activity activity;
 
     private LocationManager() {
     }
@@ -52,9 +55,10 @@ public class LocationManager {
 
     private void init(Context context) {
         this.context = context;
-        this.activity = (Activity) context;
-        this.locationTracker = (LocationTracker) context;
         this.fusedLocationProviderClient = LocationServices.getFusedLocationProviderClient(context);
+        if(context instanceof Activity){
+            activity = (Activity) context;
+        }
 
         //continuous updates
         locationCallback = new LocationCallback() {
@@ -64,8 +68,14 @@ public class LocationManager {
                     return;
                 }
                 for (Location location : locationResult.getLocations()) {
-                    // Update UI with location data
-                    locationTracker.updateLocation(location);
+                    if (location != null) {
+                        stringBuilder.setLength(0);
+                        stringBuilder.append("Time: " + System.currentTimeMillis() + "\nLat: " + location.getLatitude() + "=>" +
+                                "Long: " + location.getLongitude());
+
+                        intent.putExtra("location", stringBuilder.toString());
+                        LocalBroadcastManager.getInstance(context).sendBroadcast(intent);
+                    }
                 }
             }
         };
@@ -85,16 +95,15 @@ public class LocationManager {
         SettingsClient client = LocationServices.getSettingsClient(context);
         Task<LocationSettingsResponse> task = client.checkLocationSettings(builder.build());
 
-        task.addOnSuccessListener(activity, new OnSuccessListener<LocationSettingsResponse>() {
+        task.addOnSuccessListener(new OnSuccessListener<LocationSettingsResponse>() {
             @Override
             public void onSuccess(LocationSettingsResponse locationSettingsResponse) {
                 // All location settings are satisfied. The client can initialize
                 // location requests here.
-                // ...
             }
         });
 
-        task.addOnFailureListener(activity, new OnFailureListener() {
+        task.addOnFailureListener(new OnFailureListener() {
             @Override
             public void onFailure(@NonNull Exception e) {
                 if (e instanceof ResolvableApiException) {
@@ -106,7 +115,7 @@ public class LocationManager {
                         ResolvableApiException resolvable = (ResolvableApiException) e;
                         resolvable.startResolutionForResult(activity,
                                 REQUEST_CHECK_SETTINGS);
-                    } catch (IntentSender.SendIntentException sendEx) {
+                    } catch (Exception sendEx) {
                         // Ignore the error.
                     }
                 }
@@ -122,7 +131,7 @@ public class LocationManager {
             return null;
         }
         fusedLocationProviderClient.getLastLocation()
-                .addOnSuccessListener(activity, new OnSuccessListener<Location>() {
+                .addOnSuccessListener(new OnSuccessListener<Location>() {
                     @Override
                     public void onSuccess(Location location) {
                         if (location == null) {
@@ -158,9 +167,10 @@ public class LocationManager {
         int locationMode = 0;
         String locationProviders;
 
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.KITKAT){
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.KITKAT) {
             try {
-                locationMode = Settings.Secure.getInt(context.getContentResolver(), Settings.Secure.LOCATION_MODE);
+                locationMode = Settings.Secure.getInt(context.getContentResolver(),
+                        Settings.Secure.LOCATION_MODE);
 
             } catch (Settings.SettingNotFoundException e) {
                 e.printStackTrace();
@@ -169,14 +179,11 @@ public class LocationManager {
 
             return locationMode != Settings.Secure.LOCATION_MODE_OFF;
 
-        }else{
-            locationProviders = Settings.Secure.getString(context.getContentResolver(), Settings.Secure.LOCATION_PROVIDERS_ALLOWED);
+        } else {
+            locationProviders = Settings.Secure.getString(context.getContentResolver(),
+                    Settings.Secure.LOCATION_PROVIDERS_ALLOWED);
             return !TextUtils.isEmpty(locationProviders);
         }
     }
 
-    //sends location to activity/fragment
-    interface LocationTracker {
-        void updateLocation(Location location);
-    }
 }

@@ -3,6 +3,10 @@ package com.example.location;
 import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.localbroadcastmanager.content.LocalBroadcastManager;
+import androidx.work.BackoffPolicy;
+import androidx.work.OneTimeWorkRequest;
+import androidx.work.WorkManager;
+import androidx.work.WorkRequest;
 
 import android.Manifest;
 import android.content.BroadcastReceiver;
@@ -22,15 +26,22 @@ import android.widget.Toast;
 import java.io.IOException;
 import java.util.List;
 import java.util.Locale;
+import java.util.concurrent.TimeUnit;
 
 public class MainActivity extends AppCompatActivity {
 
-    Button btnGetLastLocation, btnGetAddress;
+    Button btnGetLastLocation, btnGetAddress, btnGetBackgroundLocation;
     TextView txtResult;
-    private String[] permissions = {Manifest.permission.ACCESS_FINE_LOCATION};
+    private String[] foregroundLocationPermissions = {Manifest.permission.ACCESS_FINE_LOCATION,
+            Manifest.permission.ACCESS_COARSE_LOCATION};
+    private String[] backgroundLocationPermissions =
+            {Manifest.permission.ACCESS_FINE_LOCATION,
+                    Manifest.permission.ACCESS_COARSE_LOCATION,
+                    Manifest.permission.ACCESS_BACKGROUND_LOCATION};
     private PermissionManager permissionManager;
     private LocationManager locationManager;
     private IntentFilter localBroadcastIntentFilter;
+    private WorkRequest foregroundWorkRequest;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -38,6 +49,7 @@ public class MainActivity extends AppCompatActivity {
         setContentView(R.layout.activity_main);
 
         btnGetLastLocation = findViewById(R.id.btnGetLastLocation);
+        btnGetBackgroundLocation = findViewById(R.id.btnGetBackgroundLocation);
         btnGetAddress = findViewById(R.id.btnGetAddress);
         txtResult = findViewById(R.id.txtResult);
 
@@ -45,12 +57,13 @@ public class MainActivity extends AppCompatActivity {
         locationManager = LocationManager.getInstance(this);
 
         localBroadcastIntentFilter = new IntentFilter();
-        localBroadcastIntentFilter.addAction("local_broadcast");
+        localBroadcastIntentFilter.addAction("foreground_location");
 
         btnGetLastLocation.setOnClickListener(new View.OnClickListener() {
             @Override public void onClick(View v) {
-                if (!permissionManager.checkPermissions(permissions)) {
-                    permissionManager.askPermissions(MainActivity.this, permissions, 100);
+                if (!permissionManager.checkPermissions(foregroundLocationPermissions)) {
+                    permissionManager.askPermissions(MainActivity.this,
+                            foregroundLocationPermissions, 100);
                 } else {
                     if (locationManager.isLocationEnabled()) {
                         Location location = locationManager.getLastLocation();
@@ -94,17 +107,28 @@ public class MainActivity extends AppCompatActivity {
                 }
             }
         });
+
+        btnGetBackgroundLocation.setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) {
+                if (!permissionManager.checkPermissions(backgroundLocationPermissions)) {
+                    permissionManager.askPermissions(MainActivity.this,
+                            backgroundLocationPermissions, 200);
+                } else {
+                    startLocationWork();
+                }
+            }
+        });
     }
 
     @Override protected void onResume() {
         super.onResume();
         locationManager.startLocationUpdates();
-        LocalBroadcastManager.getInstance(MainActivity.this).registerReceiver(localBroadCastReceiver,
+        LocalBroadcastManager.getInstance(MainActivity.this).registerReceiver(foregroundLocationBroadCastReceiver,
                 localBroadcastIntentFilter);
     }
 
     @Override protected void onPause() {
-        LocalBroadcastManager.getInstance(MainActivity.this).unregisterReceiver(localBroadCastReceiver);
+        LocalBroadcastManager.getInstance(MainActivity.this).unregisterReceiver(foregroundLocationBroadCastReceiver);
         locationManager.stopLocationUpdates();
         super.onPause();
     }
@@ -116,10 +140,13 @@ public class MainActivity extends AppCompatActivity {
         if (permissionManager.handlePermissionResult(MainActivity.this, 100, permissions,
                 grantResults)) {
             locationManager.createLocationRequest();
+        } else if (permissionManager.handlePermissionResult(MainActivity.this, 200, permissions,
+                grantResults)) {
+            startLocationWork();
         }
     }
 
-    BroadcastReceiver localBroadCastReceiver = new BroadcastReceiver() {
+    BroadcastReceiver foregroundLocationBroadCastReceiver = new BroadcastReceiver() {
         @Override public void onReceive(Context context, Intent intent) {
             Log.d("TAG", "Broadcasted");
             Toast.makeText(MainActivity.this,
@@ -127,4 +154,13 @@ public class MainActivity extends AppCompatActivity {
         }
     };
 
+    private void startLocationWork() {
+        foregroundWorkRequest = new OneTimeWorkRequest.Builder(BackgroundLocationWork.class)
+                .addTag("LocationWork")
+                .setBackoffCriteria(BackoffPolicy.LINEAR,
+                        OneTimeWorkRequest.MIN_BACKOFF_MILLIS, TimeUnit.SECONDS)
+                .build();
+
+        WorkManager.getInstance(MainActivity.this).enqueue(foregroundWorkRequest);
+    }
 }

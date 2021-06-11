@@ -4,7 +4,6 @@ import android.Manifest;
 import android.app.Activity;
 import android.content.Context;
 import android.content.Intent;
-import android.content.IntentSender;
 import android.content.pm.PackageManager;
 import android.location.Location;
 import android.os.Build;
@@ -38,7 +37,8 @@ public class LocationManager {
     private static int REQUEST_CHECK_SETTINGS = 200;
     private LocationRequest locationRequest;
     private LocationCallback locationCallback;
-    Intent intent = new Intent("local_broadcast");
+    Intent foregroundLocationIntent = new Intent("foreground_location");
+    Intent backgroundLocationIntent = new Intent("background_location");
     StringBuilder stringBuilder = new StringBuilder();
     private Activity activity;
 
@@ -73,8 +73,11 @@ public class LocationManager {
                         stringBuilder.append("Time: " + System.currentTimeMillis() + "\nLat: " + location.getLatitude() + "=>" +
                                 "Long: " + location.getLongitude());
 
-                        intent.putExtra("location", stringBuilder.toString());
-                        LocalBroadcastManager.getInstance(context).sendBroadcast(intent);
+                        foregroundLocationIntent.putExtra("location", stringBuilder.toString());
+                        LocalBroadcastManager.getInstance(context).sendBroadcast(foregroundLocationIntent);
+
+                        backgroundLocationIntent.putExtra("location", stringBuilder.toString());
+                        LocalBroadcastManager.getInstance(context).sendBroadcast(backgroundLocationIntent);
                     }
                 }
             }
